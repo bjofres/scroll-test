@@ -219,7 +219,7 @@ function render(ctx,w,h,t){
       const dyP=i>0?pts[i].y-pts[i-1].y:pts[i+1].y-pts[i].y
       const slope=i>0?dyP/(dxP||.001):0
       const light=C.shade(slope,moonF)
-      const lx=moonF?1-pts[i].x:pts[i].x
+      const lx=pts[i].x*(1-moonF)+(1-pts[i].x)*moonF
       const mul=(.9-lx*.12)*light*dn[li]
       grad.addColorStop((xs[i]-minX)/(maxX-minX),C.rgb(baseCol.r*mul|0,baseCol.g*mul|0,baseCol.b*mul|0))
     }
