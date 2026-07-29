@@ -35,11 +35,12 @@ const C={
     for(let i=0;i<stops.length-1;i++){const a=stops[i],b=stops[i+1];if(t>=a.p&&t<=b.p){const l=(t-a.p)/(b.p-a.p);return C.lerp(C.hex(a.c),C.hex(b.c),l)}}
     return C.hex(stops[stops.length-1].c)
   },
-  shade(profSlope,moonSide){
-    // profSlope in [0,1]² space; positive = dune going up rightward
-    // sun-left: up-slope → LIT; moon-right: down-slope → LIT
-    const raw=moonSide?-profSlope:profSlope
-    return Math.max(.15,Math.min(1,.5+.5*raw*3))
+  shade(profSlope,moonF){
+    // moonF=0: sun (left light, up-slope=LIT)
+    // moonF=1: moon (right light, down-slope=LIT)
+    const sun=Math.max(.15,Math.min(1,.5+.5*profSlope*3))
+    const moon=Math.max(.15,Math.min(1,.5-.5*profSlope*3))
+    return sun*(1-moonF)+moon*moonF
   }
 }
 
@@ -202,30 +203,31 @@ function render(ctx,w,h,t){
     ctx.restore()
   }
 
-  // --- DUNE LAYERS (per-segment slope shading for 3D volume) ---
+  // --- DUNE LAYERS (single fill per layer, high-res gradient along crest) ---
   const dn=[.92,.86,.80,.74,.68]
-  const moonSide=t>.5
+  const moonF=Math.min(1,Math.max(0,(t-.35)/.4))
   for(let li=0;li<LAYERS.length;li++){
     const l=LAYERS[li],pts=DUNE_PTS[li]
     const baseCol=C.grad(PAL_LAYER[l.pal],t)
     const ox=(t-.5)*l.para*w,by=l.base*h,sc=l.scale
     const cy=pts.map(p=>by-p.y*h*sc)
-    const layerMul=dn[li]
-    for(let i=0;i<pts.length-1;i++){
-      const dxP=pts[i+1].x-pts[i].x,dyP=pts[i+1].y-pts[i].y
-      const profSlope=dyP/(dxP||.001)
-      const light=C.shade(profSlope,moonSide)
-      const mid=(pts[i].x+pts[i+1].x)/2
-      const lx=moonSide?1-mid:mid
-      const amb=.9-lx*.12
-      const mul=amb*light*layerMul
-      const x1=pts[i].x*w+ox,x2=pts[i+1].x*w+ox
-      const dr=baseCol.r*mul|0,dg=baseCol.g*mul|0,db=baseCol.b*mul|0
-      ctx.beginPath();ctx.moveTo(x1,cy[i])
-      ctx.lineTo(x2,cy[i+1]);ctx.lineTo(x2,h)
-      ctx.lineTo(x1,h);ctx.closePath()
-      ctx.fillStyle=C.rgb(dr,dg,db);ctx.fill()
+    const xs=pts.map(p=>p.x*w+ox)
+    const minX=xs[0],maxX=xs[xs.length-1]
+    const grad=ctx.createLinearGradient(minX,0,maxX,0)
+    for(let i=0;i<pts.length;i++){
+      const dxP=i>0?pts[i].x-pts[i-1].x:pts[i+1].x-pts[i].x
+      const dyP=i>0?pts[i].y-pts[i-1].y:pts[i+1].y-pts[i].y
+      const slope=i>0?dyP/(dxP||.001):0
+      const light=C.shade(slope,moonF)
+      const lx=moonF?1-pts[i].x:pts[i].x
+      const mul=(.9-lx*.12)*light*dn[li]
+      grad.addColorStop((xs[i]-minX)/(maxX-minX),C.rgb(baseCol.r*mul|0,baseCol.g*mul|0,baseCol.b*mul|0))
     }
+    ctx.beginPath()
+    ctx.moveTo(-w,h);ctx.lineTo(-w,cy[0]);ctx.lineTo(ox,cy[0])
+    for(let i=1;i<pts.length;i++)ctx.lineTo(xs[i],cy[i])
+    ctx.lineTo(w+w,cy[cy.length-1]);ctx.lineTo(w+w,h);ctx.closePath()
+    ctx.fillStyle=grad;ctx.fill()
   }
 
   // --- DUST (realistic floating sand, semi-transparent warm circles) ---
