@@ -1,0 +1,64 @@
+# === OS generated files ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+
+# === IDEs & Editors ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+.ProjectHandover
+.ntvs_analysis.dat
+.vs/
+.opencode/
+templates/*
+
+# === Node.js ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+.pnpm-debug.log*
+lerna-debug.log*
+
+# === Logs & temporary files ===
+*.log
+tmp/
+temp/
+
+# === Environment variable files ===
+.env
+.env.local
+.env.*.local
+
+# === Build / cache / dist ===
+dist/
+.cache/
+*.tsbuildinfo
+.eslintcache
+.next/
+nuxt.dist/
+
+# === OS / editor misc ===
+.directory
+*.pid
+*.seed
+*.pid.lock
+
+# === Testing ===
+coverage/
+.nyc_output/
+
