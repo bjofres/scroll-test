@@ -35,11 +35,11 @@ const C={
     for(let i=0;i<stops.length-1;i++){const a=stops[i],b=stops[i+1];if(t>=a.p&&t<=b.p){const l=(t-a.p)/(b.p-a.p);return C.lerp(C.hex(a.c),C.hex(b.c),l)}}
     return C.hex(stops[stops.length-1].c)
   },
-  shade(slope,moonSide){
-    // screen-y: going up→negative slope, going down→positive slope
-    // sun-left: up-slope (negative) → LIT; moon-right: down-slope (positive) → LIT
-    const raw=moonSide?slope:-slope
-    return Math.max(.15,Math.min(1,.5+.5*raw))
+  shade(profSlope,moonSide){
+    // profSlope in [0,1]² space; positive = dune going up rightward
+    // sun-left: up-slope → LIT; moon-right: down-slope → LIT
+    const raw=moonSide?-profSlope:profSlope
+    return Math.max(.15,Math.min(1,.5+.5*raw*3))
   }
 }
 
@@ -210,19 +210,19 @@ function render(ctx,w,h,t){
     const baseCol=C.grad(PAL_LAYER[l.pal],t)
     const ox=(t-.5)*l.para*w,by=l.base*h,sc=l.scale
     const cy=pts.map(p=>by-p.y*h*sc)
-    const m=baseCol.r*.3+baseCol.g*.59+baseCol.b*.11
+    const layerMul=dn[li]
     for(let i=0;i<pts.length-1;i++){
-      const x1=pts[i].x*w+ox,x2=pts[i+1].x*w+ox
-      const y1=cy[i],y2=cy[i+1]
-      const slope=(y2-y1)/(x2-x1||1)/h*300
-      const light=C.shade(slope,moonSide)
+      const dxP=pts[i+1].x-pts[i].x,dyP=pts[i+1].y-pts[i].y
+      const profSlope=dyP/(dxP||.001)
+      const light=C.shade(profSlope,moonSide)
       const mid=(pts[i].x+pts[i+1].x)/2
       const lx=moonSide?1-mid:mid
-      const amb=.85-lx*.15
-      const mul=amb*light
+      const amb=.9-lx*.12
+      const mul=amb*light*layerMul
+      const x1=pts[i].x*w+ox,x2=pts[i+1].x*w+ox
       const dr=baseCol.r*mul|0,dg=baseCol.g*mul|0,db=baseCol.b*mul|0
-      ctx.beginPath();ctx.moveTo(x1,y1)
-      ctx.lineTo(x2,y2);ctx.lineTo(x2,h)
+      ctx.beginPath();ctx.moveTo(x1,cy[i])
+      ctx.lineTo(x2,cy[i+1]);ctx.lineTo(x2,h)
       ctx.lineTo(x1,h);ctx.closePath()
       ctx.fillStyle=C.rgb(dr,dg,db);ctx.fill()
     }
