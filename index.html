@@ -36,13 +36,16 @@ const C={
     return C.hex(stops[stops.length-1].c)
   },
   // Horizontal lighting: sun from left (t<.5) or moon from right (t>.5)
+  // Stronger falloff at night when dune base is dark
   lightGrad(ctx,w,c,t){
     const moonSide=t>.5
     const grad=ctx.createLinearGradient(0,0,w,0)
     const steps=5
+    const shadow=t<.5?.1:.3
     for(let i=0;i<=steps;i++){
       const x=i/steps,lx=moonSide?1-x:x
-      const dr=c.r*(.8-lx*.08)|0,dg=c.g*(.72-lx*.06)|0,db=c.b*(.74-lx*.05)|0
+      const fall=shadow*lx
+      const dr=c.r*(1-fall)|0,dg=c.g*(1-fall*.85)|0,db=c.b*(1-fall*.8)|0
       grad.addColorStop(x,C.rgb(dr,dg,db))
     }
     return grad
