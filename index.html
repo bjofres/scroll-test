@@ -74,7 +74,7 @@ const PAL_LAYER=[
 
 // ===== STARS (small dots only, no ellipses/arcs) =====
 // Dynamic count: fewer on mobile, scaled to screen width
-const starCount=isMobile?Math.min(80,Math.round(innerWidth*.08)):160
+const starCount=isMobile?Math.min(120,Math.round(innerWidth*.15)):160
 const stars=Array(starCount).fill().map(()=>({
   x:Math.random(),y:Math.random()*(isMobile ? .65 : .5),
   r:.3+Math.random()*1.5,s:.2+Math.random()*2.5,
@@ -101,21 +101,18 @@ function computeProfile(bumps,res=180){
   return pts
 }
 
-// Scale Gaussian widths to screen width for visual consistency across devices
-// On narrow screens, reduce w (wider bumps) so dunes maintain proportional shape
+// Portrait adaptation: wider bumps, spread layers, adjust scales
+const isPortrait=portraitRatio()>1.3
 const duneWScale=isMobile?Math.max(.6,innerWidth/1920):1
-// In portrait mode on mobile, shift bases slightly downward to compose better
-const portraitAdj=isMobile?(portraitRatio()>1.4 ? .05 : 0):0
-// 5 layers with unique dune patterns and parallax
-const LAYERS=[
-  {cnt:7, hMin:.10,hMax:.28,wMin:300*duneWScale,wMax:700*duneWScale,   base:.45+portraitAdj*.4,para:.008,scale:.12,pal:0},
-  {cnt:5, hMin:.14,hMax:.32,wMin:200*duneWScale,wMax:500*duneWScale,   base:.54+portraitAdj*.3,para:.020,scale:.15,pal:1},
-  {cnt:4, hMin:.18,hMax:.40,wMin:120*duneWScale,wMax:350*duneWScale,   base:.63+portraitAdj*.2,para:.040,scale:.18,pal:2},
-  {cnt:3, hMin:.22,hMax:.48,wMin:80*duneWScale,wMax:260*duneWScale,    base:.72+portraitAdj*.1,para:.080,scale:.20,pal:3},
-  {cnt:2, hMin:.28,hMax:.56,wMin:50*duneWScale,wMax:200*duneWScale,    base:.82+portraitAdj*.0,para:.140,scale:.24,pal:4},
-]
-// Pre-generate bumps and profiles (lower resolution on mobile for performance)
+const portraitMul=isPortrait?1.5:1
 const DUNE_RES=isMobile?170:180
+const LAYERS=[
+  {cnt:6, hMin:.10,hMax:.22,wMin:300*duneWScale,wMax:700*duneWScale,   base:.40,para:.008,scale:.10*portraitMul,pal:0},
+  {cnt:5, hMin:.13,hMax:.26,wMin:200*duneWScale,wMax:500*duneWScale,   base:.52,para:.020,scale:.12*portraitMul,pal:1},
+  {cnt:4, hMin:.16,hMax:.32,wMin:120*duneWScale,wMax:350*duneWScale,   base:.62,para:.040,scale:.14*portraitMul,pal:2},
+  {cnt:3, hMin:.20,hMax:.38,wMin:80*duneWScale,wMax:260*duneWScale,    base:.71,para:.080,scale:.16*portraitMul,pal:3},
+  {cnt:2, hMin:.24,hMax:.44,wMin:50*duneWScale,wMax:200*duneWScale,    base:.80,para:.140,scale:.18*portraitMul,pal:4},
+]
 const LAYER_BUMPS=LAYERS.map(l=>genBumps(l.cnt,l.hMin,l.hMax,l.wMin,l.wMax))
 const DUNE_PTS=LAYER_BUMPS.map(b=>computeProfile(b,DUNE_RES))
 
@@ -135,6 +132,7 @@ for(let i=0;i<dustCount;i++){
 function render(ctx,w,h,t){
   const time=performance.now()/1e3
   const baseSize=Math.min(w,h)
+  const vSize=isMobile?Math.max(w,h)*.038:baseSize*.055
 
   // --- SKY ---
   const tCol=C.grad(SKY_T,t),bCol=C.grad(SKY_B,t)
@@ -157,8 +155,7 @@ function render(ctx,w,h,t){
   // --- SUN (large, diffuse, behind far dunes) ---
   if(t<.6){
     const lt=t/.6,sy=h*(.12+lt*.55)
-    // Proportional radius: scales with viewport so it looks balanced on any screen
-    const maxRad=baseSize*.055,rad=Math.max(maxRad*.37,maxRad-lt*maxRad*.47),al=Math.max(0,1-(t-.35)/.25)
+    const maxRad=vSize,rad=Math.max(maxRad*.37,maxRad-lt*maxRad*.47),al=Math.max(0,1-(t-.35)/.25)
     const sc=C.grad(SUN_COL,t),sgc=C.grad(SUN_GLW,t)
     ctx.save();ctx.globalAlpha=al
 
@@ -183,7 +180,7 @@ function render(ctx,w,h,t){
   // --- MOON ---
   if(t>.25){
     const al=Math.max(0,Math.min(1,(t-.25)/.3)),my=h*(.06+(1-t)*.35)
-    const moonRad=baseSize*.035
+    const moonRad=vSize*.7
     ctx.save();ctx.globalAlpha=al
     const ag=ctx.createRadialGradient(w*.78,my,moonRad*.26,w*.78,my,moonRad*4)
     ag.addColorStop(0,'rgba(200,210,240,.2)');ag.addColorStop(.5,'rgba(200,210,240,.04)');ag.addColorStop(1,'rgba(200,210,240,0)')
@@ -194,38 +191,19 @@ function render(ctx,w,h,t){
     ctx.restore()
   }
 
-  // --- DUNE LAYERS (near→far, max-envelope fill prevents inversion) ---
-  for(let li=LAYERS.length-1;li>=0;li--){
+  // --- DUNE LAYERS (painter's algorithm: back→front, each to bottom) ---
+  const dn=[.92,.86,.80,.74,.68]
+  for(let li=0;li<LAYERS.length;li++){
     const l=LAYERS[li],pts=DUNE_PTS[li]
     const baseCol=C.grad(PAL_LAYER[l.pal],t)
     const ox=(t-.5)*l.para*w,by=l.base*h,sc=l.scale
-    const dn=[.92,.86,.80,.74,.68][li]
-    const band={r:baseCol.r*dn|0,g:baseCol.g*dn|0,b:baseCol.b*dn|0}
+    const band={r:baseCol.r*dn[li]|0,g:baseCol.g*dn[li]|0,b:baseCol.b*dn[li]|0}
     const sx=Math.min(0,ox)-10,ex=Math.max(w,w+ox)+10
-
-    // crest y at each profile point
     const cy=pts.map(p=>by-p.y*h*sc)
-    // bottom envelope: max of this crest and next layer's crest (prevent inversion)
-    let byArr
-    if(li<LAYERS.length-1){
-      const nl=LAYERS[li+1],np=DUNE_PTS[li+1]
-      const nox=(t-.5)*nl.para*w,nby=nl.base*h,nsc=nl.scale
-      const ny=np.map(p=>nby-p.y*h*nsc)
-      byArr=cy.map((c,i)=>Math.max(c,ny[i]))
-    }
-
     ctx.beginPath()
     ctx.moveTo(sx,cy[0])
-    for(let i=0;i<pts.length;i++)ctx.lineTo(pts[i].x*w+ox,cy[i])
-    ctx.lineTo(ex,cy[cy.length-1])
-    if(byArr){
-      ctx.lineTo(ex,byArr[byArr.length-1])
-      for(let i=pts.length-1;i>=0;i--)ctx.lineTo(pts[i].x*w+ox,byArr[i])
-      ctx.lineTo(sx,byArr[0])
-    }else{
-      ctx.lineTo(ex,h);ctx.lineTo(sx,h)
-    }
-    ctx.closePath()
+    for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x*w+ox,cy[i])
+    ctx.lineTo(ex,h);ctx.lineTo(sx,h);ctx.closePath()
     ctx.fillStyle=C.lightGrad(ctx,w,band,t);ctx.fill()
   }
 
