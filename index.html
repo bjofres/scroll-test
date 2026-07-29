@@ -35,13 +35,14 @@ const C={
     for(let i=0;i<stops.length-1;i++){const a=stops[i],b=stops[i+1];if(t>=a.p&&t<=b.p){const l=(t-a.p)/(b.p-a.p);return C.lerp(C.hex(a.c),C.hex(b.c),l)}}
     return C.hex(stops[stops.length-1].c)
   },
-  // Subtle horizontal lighting: warm left, slightly darker warm right
+  // Horizontal lighting: sun from left (t<.5) or moon from right (t>.5)
   lightGrad(ctx,w,c,t){
+    const moonSide=t>.5
     const grad=ctx.createLinearGradient(0,0,w,0)
     const steps=5
     for(let i=0;i<=steps;i++){
-      const x=i/steps,lx=x
-      const dr=c.r*(.75-lx*.05)|0,dg=c.g*(.68-lx*.03)|0,db=c.b*(.72-lx*.02)|0
+      const x=i/steps,lx=moonSide?1-x:x
+      const dr=c.r*(.8-lx*.08)|0,dg=c.g*(.72-lx*.06)|0,db=c.b*(.74-lx*.05)|0
       grad.addColorStop(x,C.rgb(dr,dg,db))
     }
     return grad
