@@ -8,10 +8,13 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:auto}
 body{background:#000;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch}
-canvas{position:fixed;top:0;left:0;width:100vw;height:100vh;display:block;touch-action:none;will-change:transform}
+canvas{position:fixed;top:0;left:0;width:100vw;height:100vh;display:block;touch-action:pan-y;will-change:transform}
 #sentinel{width:1px;pointer-events:none}
 @media(prefers-reduced-motion:reduce){#sentinel{height:100vh!important}}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lenis@1.1.18/dist/lenis.min.js"></script>
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -102,7 +105,7 @@ function computeProfile(bumps,res=180){
 
 // Scale Gaussian widths to screen width for visual consistency across devices
 // On narrow screens, reduce w (wider bumps) so dunes maintain proportional shape
-const duneWScale=isMobile?Math.max(.3,innerWidth/1920):1
+const duneWScale=isMobile?Math.max(.6,innerWidth/1920):1
 // In portrait mode on mobile, shift bases slightly downward to compose better
 const portraitAdj=isMobile?(portraitRatio()>1.4 ? .05 : 0):0
 // 5 layers with unique dune patterns and parallax
@@ -114,7 +117,7 @@ const LAYERS=[
   {cnt:2, hMin:.28,hMax:.56,wMin:50*duneWScale,wMax:200*duneWScale,    base:.82+portraitAdj*.0,para:.140,scale:.24,pal:4},
 ]
 // Pre-generate bumps and profiles (lower resolution on mobile for performance)
-const DUNE_RES=isMobile?90:180
+const DUNE_RES=isMobile?170:180
 const LAYER_BUMPS=LAYERS.map(l=>genBumps(l.cnt,l.hMin,l.hMax,l.wMin,l.wMax))
 const DUNE_PTS=LAYER_BUMPS.map(b=>computeProfile(b,DUNE_RES))
 
