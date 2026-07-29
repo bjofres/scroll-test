@@ -76,6 +76,9 @@ const PAL_LAYER=[
 // ===== DUNE PROFILES (individual Gaussian dunes, NOT continuous waves) =====
 function genBumps(count, minH, maxH, minW, maxW){
   const bumps=[],minDist=0.7/count
+  // edge bumps prevent flat areas at extreme parallax
+  bumps.push({x:0.01, h:minH*0.6, w:Math.max(50,minW*2)})
+  bumps.push({x:0.99, h:minH*0.6, w:Math.max(50,minW*2)})
   for(let i=0;i<count;i++){
     let x,n=0
     do{x=0.04+Math.random()*0.92;n++}while(n<30&&bumps.some(b=>Math.abs(b.x-x)<minDist))
@@ -207,23 +210,22 @@ function render(ctx,w,h,t){
     ctx.restore()
   }
 
-  // --- DUNE LAYERS (painter's algorithm: back→front, each to bottom) ---
+  // --- DUNE LAYERS (clipped painter's algorithm) ---
+  ctx.save();ctx.beginPath();ctx.rect(0,0,w,h);ctx.clip()
   const dn=[.92,.86,.80,.74,.68]
   for(let li=0;li<LAYERS.length;li++){
     const l=LAYERS[li],pts=DUNE_PTS[li]
     const baseCol=C.grad(PAL_LAYER[l.pal],t)
     const ox=(t-.5)*l.para*w,by=l.base*h,sc=l.scale
     const band={r:baseCol.r*dn[li]|0,g:baseCol.g*dn[li]|0,b:baseCol.b*dn[li]|0}
-    const margin=Math.abs(ox)+w*0.15
-    const sx=-margin,ex=w+margin
     const cy=pts.map(p=>by-p.y*h*sc)
     ctx.beginPath()
-    ctx.moveTo(sx,h)
-    ctx.lineTo(ox,cy[0])
+    ctx.moveTo(0,cy[0])
     for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x*w+ox,cy[i])
-    ctx.lineTo(ex,h);ctx.closePath()
+    ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath()
     ctx.fillStyle=C.lightGrad(ctx,w,band,t);ctx.fill()
   }
+  ctx.restore()
 
   // --- DUST (realistic floating sand, semi-transparent warm circles) ---
   const dustA=Math.max(.05,.55-t*.5)
