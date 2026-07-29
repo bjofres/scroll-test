@@ -19,9 +19,10 @@ canvas{position:fixed;top:0;left:0;width:100vw;height:100vh;display:block;touch-
 <div id="sentinel"></div>
 
 <script>
-// ===== MOBILE DETECTION =====
-const isMobile=matchMedia('(max-width:768px)').matches
-const portraitRatio=()=>Math.max(1,innerHeight/innerWidth)
+// ===== RESPONSIVE PARAMETERS (smooth, not binary) =====
+const aspect=innerWidth/innerHeight
+const isMobile=innerWidth<=768
+const portraitFactor=Math.max(0,Math.min(1,(1.2-aspect)/0.7))
 
 // ===== COLOR UTILITIES =====
 const C={
@@ -74,9 +75,10 @@ const PAL_LAYER=[
 
 // ===== STARS (small dots only, no ellipses/arcs) =====
 // Dynamic count: fewer on mobile, scaled to screen width
-const starCount=isMobile?Math.min(120,Math.round(innerWidth*.15)):160
+const starCount=isMobile?Math.min(100,Math.round(innerWidth*0.18)):160
+const starYLimit=Math.max(0.35,bases[0]-H_MAXS[0]*SCALES[0]*duneHScale)
 const stars=Array(starCount).fill().map(()=>({
-  x:Math.random(),y:Math.random()*(isMobile ? .65 : .5),
+  x:Math.random(),y:Math.random()*starYLimit*0.9,
   r:.3+Math.random()*1.5,s:.2+Math.random()*2.5,
   ph:Math.random()*7,a:.2+Math.random()*.8
 }))
@@ -101,27 +103,38 @@ function computeProfile(bumps,res=180){
   return pts
 }
 
-// Portrait adaptation: wider bumps, spread layers, adjust scales
-const isPortrait=portraitRatio()>1.3
-const duneWScale=isMobile?Math.max(.6,innerWidth/1920):1
-const portraitMul=isPortrait?1.5:1
-const DUNE_RES=isMobile?170:180
-const LAYERS=[
-  {cnt:6, hMin:.10,hMax:.22,wMin:300*duneWScale,wMax:700*duneWScale,   base:.40,para:.008,scale:.10*portraitMul,pal:0},
-  {cnt:5, hMin:.13,hMax:.26,wMin:200*duneWScale,wMax:500*duneWScale,   base:.52,para:.020,scale:.12*portraitMul,pal:1},
-  {cnt:4, hMin:.16,hMax:.32,wMin:120*duneWScale,wMax:350*duneWScale,   base:.62,para:.040,scale:.14*portraitMul,pal:2},
-  {cnt:3, hMin:.20,hMax:.38,wMin:80*duneWScale,wMax:260*duneWScale,    base:.71,para:.080,scale:.16*portraitMul,pal:3},
-  {cnt:2, hMin:.24,hMax:.44,wMin:50*duneWScale,wMax:200*duneWScale,    base:.80,para:.140,scale:.18*portraitMul,pal:4},
-]
+// Smooth continuous parameters based on portraitFactor
+const duneWScale=Math.max(0.8,Math.min(1.4,innerWidth/1920+0.5))
+const duneHScale=1.0-portraitFactor*0.35
+const DESKTOP_CNT=[6,5,4,3,2]
+const PORTRAIT_CNT=[4,3,3,2,1]
+const bumpCounts=DESKTOP_CNT.map((c,i)=>Math.round(c+(PORTRAIT_CNT[i]-c)*portraitFactor))
+const DESKTOP_BASES=[0.40,0.52,0.62,0.71,0.80]
+const PORTRAIT_BASES=[0.48,0.59,0.67,0.75,0.83]
+const bases=DESKTOP_BASES.map((b,i)=>b+(PORTRAIT_BASES[i]-b)*portraitFactor)
+const DUNE_RES=Math.max(60,Math.min(180,Math.round(innerWidth/10)))
+const H_MINS=[0.10,0.13,0.16,0.20,0.24]
+const H_MAXS=[0.22,0.26,0.32,0.38,0.44]
+const W_MINS=[300,200,120,80,50]
+const W_MAXS=[700,500,350,260,200]
+const PARAS=[0.008,0.020,0.040,0.080,0.140]
+const SCALES=[0.10,0.12,0.14,0.16,0.18]
+const LAYERS=bumpCounts.map((cnt,i)=>({
+  cnt, hMin:H_MINS[i], hMax:H_MAXS[i],
+  wMin:W_MINS[i]*duneWScale, wMax:W_MAXS[i]*duneWScale,
+  base:bases[i], para:PARAS[i], scale:SCALES[i]*duneHScale, pal:i
+}))
 const LAYER_BUMPS=LAYERS.map(l=>genBumps(l.cnt,l.hMin,l.hMax,l.wMin,l.wMax))
 const DUNE_PTS=LAYER_BUMPS.map(b=>computeProfile(b,DUNE_RES))
 
 // ===== DUST (realistic floating sand, many semi-transparent warm circles) =====
-const dustCount=isMobile?120:280
+const dustCount=isMobile?Math.round(120*(innerWidth/375)):280
+const dustYStart=.3+portraitFactor*.2
+const dustYRange=.65-portraitFactor*.15
 const dust=[]
 for(let i=0;i<dustCount;i++){
   dust.push({
-    x:Math.random()*1.2-.1,y:.3+Math.random()*.65,
+    x:Math.random()*1.2-.1,y:dustYStart+Math.random()*dustYRange,
     r:.3+Math.random()*2.5,a:.02+Math.random()*.08,
     dx:(Math.random()-.5)*.3,dy:-(.01+Math.random()*.04),
     ph:Math.random()*7,sp:.3+Math.random()*1.5
@@ -131,8 +144,7 @@ for(let i=0;i<dustCount;i++){
 // ===== RENDER =====
 function render(ctx,w,h,t){
   const time=performance.now()/1e3
-  const baseSize=Math.min(w,h)
-  const vSize=isMobile?Math.max(w,h)*.038:baseSize*.055
+  const vSize=Math.min(w,h)*0.055
 
   // --- SKY ---
   const tCol=C.grad(SKY_T,t),bCol=C.grad(SKY_B,t)
@@ -154,7 +166,10 @@ function render(ctx,w,h,t){
 
   // --- SUN (large, diffuse, behind far dunes) ---
   if(t<.6){
-    const lt=t/.6,sy=h*(.12+lt*.55)
+    const lt=t/.6
+    const sunStart=.12-portraitFactor*.02
+    const sunTravel=.55-portraitFactor*.20
+    const sy=h*(sunStart+lt*sunTravel)
     const maxRad=vSize,rad=Math.max(maxRad*.37,maxRad-lt*maxRad*.47),al=Math.max(0,1-(t-.35)/.25)
     const sc=C.grad(SUN_COL,t),sgc=C.grad(SUN_GLW,t)
     ctx.save();ctx.globalAlpha=al
@@ -179,7 +194,9 @@ function render(ctx,w,h,t){
 
   // --- MOON ---
   if(t>.25){
-    const al=Math.max(0,Math.min(1,(t-.25)/.3)),my=h*(.06+(1-t)*.35)
+    const al=Math.max(0,Math.min(1,(t-.25)/.3))
+    const moonStart=portraitFactor>.5?.04:.06
+    const my=h*(moonStart+(1-t)*.35)
     const moonRad=vSize*.7
     ctx.save();ctx.globalAlpha=al
     const ag=ctx.createRadialGradient(w*.78,my,moonRad*.26,w*.78,my,moonRad*4)
@@ -198,12 +215,14 @@ function render(ctx,w,h,t){
     const baseCol=C.grad(PAL_LAYER[l.pal],t)
     const ox=(t-.5)*l.para*w,by=l.base*h,sc=l.scale
     const band={r:baseCol.r*dn[li]|0,g:baseCol.g*dn[li]|0,b:baseCol.b*dn[li]|0}
-    const sx=Math.min(0,ox)-10,ex=Math.max(w,w+ox)+10
+    const margin=Math.abs(ox)+w*0.15
+    const sx=-margin,ex=w+margin
     const cy=pts.map(p=>by-p.y*h*sc)
     ctx.beginPath()
-    ctx.moveTo(sx,cy[0])
+    ctx.moveTo(sx,h)
+    ctx.lineTo(ox,cy[0])
     for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x*w+ox,cy[i])
-    ctx.lineTo(ex,h);ctx.lineTo(sx,h);ctx.closePath()
+    ctx.lineTo(ex,h);ctx.closePath()
     ctx.fillStyle=C.lightGrad(ctx,w,band,t);ctx.fill()
   }
 
@@ -231,7 +250,9 @@ const canvas=document.getElementById('c'),ctx=canvas.getContext('2d')
 let progress=0,vw,vh
 function resize(){
   vw=innerWidth;vh=innerHeight
-  canvas.width=vw;canvas.height=vh
+  const dpr=window.devicePixelRatio||1
+  canvas.width=vw*dpr;canvas.height=vh*dpr
+  ctx.setTransform(dpr,0,0,dpr,0,0)
 }
 resize();window.addEventListener('resize',resize)
 ;(function loop(){render(ctx,vw,vh,progress);requestAnimationFrame(loop)})()
