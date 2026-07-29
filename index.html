@@ -73,16 +73,6 @@ const PAL_LAYER=[
   [{p:0,c:'#906844'},{p:.2,c:'#785430'},{p:.45,c:'#583820'},{p:.7,c:'#180804'},{p:1,c:'#010000'}],
 ]
 
-// ===== STARS (small dots only, no ellipses/arcs) =====
-// Dynamic count: fewer on mobile, scaled to screen width
-const starCount=isMobile?Math.min(100,Math.round(innerWidth*0.18)):160
-const starYLimit=Math.max(0.35,bases[0]-H_MAXS[0]*SCALES[0]*duneHScale)
-const stars=Array(starCount).fill().map(()=>({
-  x:Math.random(),y:Math.random()*starYLimit*0.9,
-  r:.3+Math.random()*1.5,s:.2+Math.random()*2.5,
-  ph:Math.random()*7,a:.2+Math.random()*.8
-}))
-
 // ===== DUNE PROFILES (individual Gaussian dunes, NOT continuous waves) =====
 function genBumps(count, minH, maxH, minW, maxW){
   const bumps=[],minDist=0.7/count
@@ -126,6 +116,15 @@ const LAYERS=bumpCounts.map((cnt,i)=>({
 }))
 const LAYER_BUMPS=LAYERS.map(l=>genBumps(l.cnt,l.hMin,l.hMax,l.wMin,l.wMax))
 const DUNE_PTS=LAYER_BUMPS.map(b=>computeProfile(b,DUNE_RES))
+
+// ===== STARS (small dots only, no ellipses/arcs) =====
+const starCount=isMobile?Math.min(100,Math.round(innerWidth*0.18)):160
+const starYLimit=Math.max(0.35,bases[0]-H_MAXS[0]*SCALES[0]*duneHScale)
+const stars=Array(starCount).fill().map(()=>({
+  x:Math.random(),y:Math.random()*starYLimit*0.9,
+  r:.3+Math.random()*1.5,s:.2+Math.random()*2.5,
+  ph:Math.random()*7,a:.2+Math.random()*.8
+}))
 
 // ===== DUST (realistic floating sand, many semi-transparent warm circles) =====
 const dustCount=isMobile?Math.round(120*(innerWidth/375)):280
