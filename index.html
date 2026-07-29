@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Desert Scroll</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:auto}
+body{background:#000;overflow-x:hidden;overflow-y:auto}
+canvas{position:fixed;top:0;left:0;width:100vw;height:100vh;display:block}
+#sentinel{height:400vh;width:1px;pointer-events:none}
+@media(prefers-reduced-motion:reduce){#sentinel{height:100vh}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="sentinel"></div>
+
+<script>
+// ===== COLOR UTILITIES =====
+const C={
+  hex(h){const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);return{r,g,b}},
+  rgb(r,g,b){const h=n=>Math.round(Math.max(0,Math.min(255,n))).toString(16).padStart(2,'0');return'#'+h(r)+h(g)+h(b)},
+  lerp(a,b,t){return{r:a.r+(b.r-a.r)*t,g:a.g+(b.g-a.g)*t,b:a.b+(b.b-a.b)*t}},
+  grad(stops,t){
+    if(t<=0)return C.hex(stops[0].c)
+    if(t>=1)return C.hex(stops[stops.length-1].c)
+    for(let i=0;i<stops.length-1;i++){const a=stops[i],b=stops[i+1];if(t>=a.p&&t<=b.p){const l=(t-a.p)/(b.p-a.p);return C.lerp(C.hex(a.c),C.hex(b.c),l)}}
+    return C.hex(stops[stops.length-1].c)
+  },
+  // Subtle horizontal lighting: warm left, slightly darker warm right
+  lightGrad(ctx,w,c,t){
+    const grad=ctx.createLinearGradient(0,0,w,0)
+    const steps=5
+    for(let i=0;i<=steps;i++){
+      const x=i/steps,lx=x
+      const dr=c.r*(.75-lx*.05)|0,dg=c.g*(.68-lx*.03)|0,db=c.b*(.72-lx*.02)|0
+      grad.addColorStop(x,C.rgb(dr,dg,db))
+    }
+    return grad
+  }
+}
+
+// ===== PALETTES (warm desert: garnet, terracotta, orange, saffron) =====
+const SKY_T=[
+  {p:0,c:'#d4783a'},{p:.15,c:'#e8943c'},{p:.3,c:'#f0a840'},{p:.5,c:'#c06830'},
+  {p:.65,c:'#7a2840'},{p:.8,c:'#2a0a2a'},{p:1,c:'#040208'}]
+const SKY_B=[
+  {p:0,c:'#f0b860'},{p:.15,c:'#e8a048'},{p:.3,c:'#d48830'},{p:.5,c:'#8a4a2a'},
+  {p:.65,c:'#4a1828'},{p:.8,c:'#0a0410'},{p:1,c:'#020104'}]
+
+const SUN_COL=[{p:0,c:'#ffe888'},{p:.25,c:'#f0a040'},{p:.45,c:'#c06020'},{p:.6,c:'#6a1010'}]
+const SUN_GLW=[{p:0,c:'#fff0c0'},{p:.25,c:'#e08040'},{p:.45,c:'#a03020'},{p:.6,c:'#200000'}]
+
+// 5 unique layer palettes for a sunset paper-cut desert look
+const PAL_LAYER=[
+  // Layer 0 (furthest) — hazy warm peach / distant sand
+  [{p:0,c:'#F0D6BB'},{p:.2,c:'#DAAA7C'},{p:.45,c:'#B88058'},{p:.7,c:'#583020'},{p:1,c:'#080402'}],
+  // Layer 1 — golden sand
+  [{p:0,c:'#DCB48C'},{p:.2,c:'#C8905C'},{p:.45,c:'#A06848'},{p:.7,c:'#482418'},{p:1,c:'#060202'}],
+  // Layer 2 — warm terracotta
+  [{p:0,c:'#CA9464'},{p:.2,c:'#B47844'},{p:.45,c:'#885030'},{p:.7,c:'#381810'},{p:1,c:'#040101'}],
+  // Layer 3 — adobe brown
+  [{p:0,c:'#B07C4C'},{p:.2,c:'#986838'},{p:.45,c:'#704020'},{p:.7,c:'#281008'},{p:1,c:'#020000'}],
+  // Layer 4 (foreground) — dark canyon
+  [{p:0,c:'#906844'},{p:.2,c:'#785430'},{p:.45,c:'#583820'},{p:.7,c:'#180804'},{p:1,c:'#010000'}],
+]
+
+// ===== STARS (small dots only, no ellipses/arcs) =====
+const stars=Array(160).fill().map(()=>({
+  x:Math.random(),y:Math.random()*.5,
+  r:.3+Math.random()*1.5,s:.2+Math.random()*2.5,
+  ph:Math.random()*7,a:.2+Math.random()*.8
+}))
+
+// ===== DUNE PROFILES (individual Gaussian dunes, NOT continuous waves) =====
+function genBumps(count, minH, maxH, minW, maxW){
+  const bumps=[],minDist=0.7/count
+  for(let i=0;i<count;i++){
+    let x,n=0
+    do{x=0.04+Math.random()*0.92;n++}while(n<30&&bumps.some(b=>Math.abs(b.x-x)<minDist))
+    bumps.push({x,h:minH+Math.random()*(maxH-minH),w:minW+Math.random()*(maxW-minW)})
+  }
+  return bumps
+}
+function computeProfile(bumps,res=180){
+  const pts=[]
+  for(let i=0;i<=res;i++){
+    const x=i/res;let y=0
+    for(const b of bumps)y+=b.h*Math.exp(-((x-b.x)**2)*b.w)
+    pts.push({x,y:Math.min(y,1)})
+  }
+  return pts
+}
+
+// 5 layers with unique dune patterns and parallax
+const LAYERS=[
+  {cnt:7, hMin:.10,hMax:.28,wMin:300,wMax:700,   base:.45,para:.008,scale:.12,pal:0},
+  {cnt:5, hMin:.14,hMax:.32,wMin:200,wMax:500,   base:.54,para:.020,scale:.15,pal:1},
+  {cnt:4, hMin:.18,hMax:.40,wMin:120,wMax:350,   base:.63,para:.040,scale:.18,pal:2},
+  {cnt:3, hMin:.22,hMax:.48,wMin:80,wMax:260,    base:.72,para:.080,scale:.20,pal:3},
+  {cnt:2, hMin:.28,hMax:.56,wMin:50,wMax:200,    base:.82,para:.140,scale:.24,pal:4},
+]
+// Pre-generate bumps and profiles
+const LAYER_BUMPS=LAYERS.map(l=>genBumps(l.cnt,l.hMin,l.hMax,l.wMin,l.wMax))
+const DUNE_PTS=LAYER_BUMPS.map(b=>computeProfile(b))
+
+// ===== DUST (realistic floating sand, many semi-transparent warm circles) =====
+const dust=[]
+for(let i=0;i<280;i++){
+  dust.push({
+    x:Math.random()*1.2-.1,y:.3+Math.random()*.65,
+    r:.3+Math.random()*2.5,a:.02+Math.random()*.08,
+    dx:(Math.random()-.5)*.3,dy:-(.01+Math.random()*.04),
+    ph:Math.random()*7,sp:.3+Math.random()*1.5
+  })
+}
+
+// ===== RENDER =====
+function render(ctx,w,h,t){
+  const time=performance.now()/1e3
+
+  // --- SKY ---
+  const tCol=C.grad(SKY_T,t),bCol=C.grad(SKY_B,t)
+  const sg=ctx.createLinearGradient(0,0,0,h)
+  sg.addColorStop(0,C.rgb(tCol.r,tCol.g,tCol.b))
+  sg.addColorStop(1,C.rgb(bCol.r,bCol.g,bCol.b))
+  ctx.fillStyle=sg;ctx.fillRect(0,0,w,h)
+
+  // --- STARS (only dots, no ellipses) ---
+  const sA=Math.max(0,Math.min(1,(t-.2)/.55))
+  if(sA>0){
+    for(const s of stars){
+      const tw=.5+.5*Math.sin(time*s.s+s.ph),a=s.a*sA*tw
+      ctx.globalAlpha=a;ctx.fillStyle='#fff'
+      ctx.fillRect(s.x*w,s.y*h,s.r,s.r)
+    }
+    ctx.globalAlpha=1
+  }
+
+  // --- SUN (large, diffuse, behind far dunes) ---
+  if(t<.6){
+    const lt=t/.6,sy=h*(.12+lt*.55),rad=Math.max(22,60-lt*28),al=Math.max(0,1-(t-.35)/.25)
+    const sc=C.grad(SUN_COL,t),sgc=C.grad(SUN_GLW,t)
+    ctx.save();ctx.globalAlpha=al
+
+    const gg=ctx.createRadialGradient(w/2,sy,0,w/2,sy,rad*5)
+    gg.addColorStop(0,`rgba(${sgc.r|0},${sgc.g|0},${sgc.b|0},.15)`)
+    gg.addColorStop(.3,`rgba(${sgc.r|0},${sgc.g|0},${sgc.b|0},.06)`)
+    gg.addColorStop(.6,`rgba(${sgc.r|0},${sgc.g|0},${sgc.b|0},.015)`)
+    gg.addColorStop(1,'rgba(0,0,0,0)')
+    ctx.fillStyle=gg;ctx.beginPath();ctx.arc(w/2,sy,rad*5,0,7);ctx.fill()
+
+    const mg=ctx.createRadialGradient(w/2,sy,rad*.3,w/2,sy,rad*2)
+    mg.addColorStop(0,'rgba(255,255,240,.3)')
+    mg.addColorStop(.5,`rgba(${sgc.r|0},${sgc.g|0},${sgc.b|0},.12)`)
+    mg.addColorStop(1,'rgba(0,0,0,0)')
+    ctx.fillStyle=mg;ctx.beginPath();ctx.arc(w/2,sy,rad*2,0,7);ctx.fill()
+
+    ctx.fillStyle=C.rgb(sc.r|0,sc.g|0,sc.b|0)
+    ctx.beginPath();ctx.arc(w/2,sy,rad,0,7);ctx.fill()
+    ctx.restore()
+  }
+
+  // --- MOON ---
+  if(t>.25){
+    const al=Math.max(0,Math.min(1,(t-.25)/.3)),my=h*(.06+(1-t)*.35)
+    ctx.save();ctx.globalAlpha=al
+    const ag=ctx.createRadialGradient(w*.78,my,10,w*.78,my,38*4)
+    ag.addColorStop(0,'rgba(200,210,240,.2)');ag.addColorStop(.5,'rgba(200,210,240,.04)');ag.addColorStop(1,'rgba(200,210,240,0)')
+    ctx.fillStyle=ag;ctx.beginPath();ctx.arc(w*.78,my,38*4,0,7);ctx.fill()
+    ctx.fillStyle='#e4e4f0';ctx.beginPath();ctx.arc(w*.78,my,38,0,7);ctx.fill()
+    ctx.fillStyle='rgba(200,200,220,.2)';ctx.beginPath();ctx.arc(w*.78-7,my-4,28,0,7);ctx.fill()
+    ctx.fillStyle='rgba(180,180,200,.1)';ctx.beginPath();ctx.arc(w*.78+9,my-2,12,0,7);ctx.fill()
+    ctx.restore()
+  }
+
+  // --- DUNE LAYERS (near→far, max-envelope fill prevents inversion) ---
+  for(let li=LAYERS.length-1;li>=0;li--){
+    const l=LAYERS[li],pts=DUNE_PTS[li]
+    const baseCol=C.grad(PAL_LAYER[l.pal],t)
+    const ox=(t-.5)*l.para*w,by=l.base*h,sc=l.scale
+    const dn=[.92,.86,.80,.74,.68][li]
+    const band={r:baseCol.r*dn|0,g:baseCol.g*dn|0,b:baseCol.b*dn|0}
+    const sx=Math.min(0,ox)-10,ex=Math.max(w,w+ox)+10
+
+    // crest y at each profile point
+    const cy=pts.map(p=>by-p.y*h*sc)
+    // bottom envelope: max of this crest and next layer's crest (prevent inversion)
+    let byArr
+    if(li<LAYERS.length-1){
+      const nl=LAYERS[li+1],np=DUNE_PTS[li+1]
+      const nox=(t-.5)*nl.para*w,nby=nl.base*h,nsc=nl.scale
+      const ny=np.map(p=>nby-p.y*h*nsc)
+      byArr=cy.map((c,i)=>Math.max(c,ny[i]))
+    }
+
+    ctx.beginPath()
+    ctx.moveTo(sx,cy[0])
+    for(let i=0;i<pts.length;i++)ctx.lineTo(pts[i].x*w+ox,cy[i])
+    ctx.lineTo(ex,cy[cy.length-1])
+    if(byArr){
+      ctx.lineTo(ex,byArr[byArr.length-1])
+      for(let i=pts.length-1;i>=0;i--)ctx.lineTo(pts[i].x*w+ox,byArr[i])
+      ctx.lineTo(sx,byArr[0])
+    }else{
+      ctx.lineTo(ex,h);ctx.lineTo(sx,h)
+    }
+    ctx.closePath()
+    ctx.fillStyle=C.lightGrad(ctx,w,band,t);ctx.fill()
+  }
+
+  // --- DUST (realistic floating sand, semi-transparent warm circles) ---
+  const dustA=Math.max(.05,.55-t*.5)
+  if(dustA>0){
+    ctx.save()
+    for(const d of dust){
+      const px=((d.x+time*d.dx+Math.sin(time*d.sp+d.ph)*.008+d.ph)%1.2-.1)*w
+      const py=(d.y+time*d.dy+Math.sin(time*.7+d.ph*1.3)*.005)*h
+      if(py<0||py>h)continue
+      ctx.globalAlpha=d.a*dustA*(.5+.5*(1-py/h))
+      ctx.beginPath()
+      ctx.arc(px,py,d.r,0,7)
+      ctx.fillStyle='rgba(170,130,95,1)'
+      ctx.fill()
+    }
+    ctx.restore()
+    ctx.globalAlpha=1
+  }
+}
+
+// ===== SCENE =====
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d')
+let progress=0
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
+resize();window.addEventListener('resize',resize)
+;(function loop(){render(ctx,canvas.width,canvas.height,progress);requestAnimationFrame(loop)})()
+
+// ===== SCROLL =====
+const sentinel=document.getElementById('sentinel')
+;(function init(){
+  if(typeof gsap!=='undefined'&&typeof ScrollTrigger!=='undefined'){
+    gsap.registerPlugin(ScrollTrigger)
+    const lenis=new Lenis({duration:1.2,easing:t=>Math.min(1,1.001-Math.pow(2,-10*t)),orientation:'vertical',smoothWheel:true})
+    lenis.on('scroll',ScrollTrigger.update)
+    ScrollTrigger.create({trigger:sentinel,start:'top top',end:'bottom bottom',scrub:1,onUpdate:function(self){progress=self.progress}})
+    ;(function raf(t){lenis.raf(t);requestAnimationFrame(raf)})(0)
+    window.addEventListener('resize',()=>ScrollTrigger.refresh())
+  } else {
+    const onScroll=()=>{const m=sentinel.scrollHeight-innerHeight;progress=Math.max(0,Math.min(1,scrollY/m))}
+    window.addEventListener('scroll',onScroll,{passive:true});onScroll()
+  }
+})()
+</script>
+</body>
+</html>
